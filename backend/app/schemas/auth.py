@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, field_validator
 
 
@@ -27,6 +28,6 @@ class UserOut(BaseModel):
     id: int
     email: str
     plan: str
-    trial_ends_at: str | None = None
+    trial_ends_at: datetime | None = None
 
     model_config = {"from_attributes": True}
