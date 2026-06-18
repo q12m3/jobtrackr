@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth, isPro } from '@/lib/auth'
@@ -38,12 +39,13 @@ function PlanBadge({ plan, trialEndsAt }: { plan: string; trialEndsAt: string | 
   )
 }
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({ href, children, onClick }: { href: string; children: React.ReactNode; onClick?: () => void }) {
   const pathname = usePathname()
   const active = pathname === href
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={cn(
         'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
         active
@@ -60,6 +62,12 @@ export function Navbar() {
   const { user, logout } = useAuth()
   const toast = useToast()
   const router = useRouter()
+  const pathname = usePathname()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [pathname])
 
   async function handleLogout() {
     try {
@@ -86,21 +94,56 @@ export function Navbar() {
           </nav>
         </div>
 
-        {user && (
-          <div className="flex items-center gap-3">
-            <span className="hidden md:block text-xs text-zinc-500 max-w-[180px] truncate">
-              {user.email}
-            </span>
-            <PlanBadge plan={user.plan} trialEndsAt={user.trial_ends_at} />
-            <button
-              onClick={handleLogout}
-              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {user && (
+            <>
+              <span className="hidden md:block text-xs text-zinc-500 max-w-[180px] truncate">
+                {user.email}
+              </span>
+              <PlanBadge plan={user.plan} trialEndsAt={user.trial_ends_at} />
+              <button
+                onClick={handleLogout}
+                className="hidden sm:block text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                Logout
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            className="sm:hidden flex flex-col justify-center items-center w-8 h-8 gap-1.5"
+            aria-label="Toggle menu"
+          >
+            <span className={cn('block h-0.5 w-5 bg-zinc-400 transition-all duration-200', menuOpen && 'rotate-45 translate-y-2')} />
+            <span className={cn('block h-0.5 w-5 bg-zinc-400 transition-all duration-200', menuOpen && 'opacity-0')} />
+            <span className={cn('block h-0.5 w-5 bg-zinc-400 transition-all duration-200', menuOpen && '-rotate-45 -translate-y-2')} />
+          </button>
+        </div>
       </div>
+
+      {menuOpen && (
+        <div className="sm:hidden border-t border-zinc-800 bg-zinc-950 px-4 py-3 flex flex-col gap-1">
+          <NavLink href="/">Dashboard</NavLink>
+          <NavLink href="/watchlist">Watchlist</NavLink>
+          {isPro(user) && <NavLink href="/analytics">Analytics</NavLink>}
+          <NavLink href="/settings">Settings</NavLink>
+          {user && (
+            <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500 truncate max-w-[180px]">{user.email}</span>
+                <PlanBadge plan={user.plan} trialEndsAt={user.trial_ends_at} />
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </header>
   )
 }
