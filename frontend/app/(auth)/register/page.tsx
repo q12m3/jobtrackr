@@ -37,7 +37,7 @@ export default function RegisterPage() {
       await api.post('/auth/register', { email, password })
       await refresh()
       toast('Account created — 7-day Pro trial started!', 'success')
-      router.push('/')
+      window.location.href = '/'
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong'
       setErrors({ form: message })

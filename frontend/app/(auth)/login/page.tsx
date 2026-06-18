@@ -28,7 +28,7 @@ export default function LoginPage() {
       await api.post('/auth/login', { email, password })
       await refresh()
       toast('Welcome back!', 'success')
-      router.push('/')
+      window.location.href = '/'
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong'
       setError(message)
