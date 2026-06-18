@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { api, ApiError } from '@/lib/api'
-import { Job, JobListResponse, WatchlistItem } from '@/lib/types'
+import { JobListResponse, WatchlistItem } from '@/lib/types'
 import { JobCard } from '@/components/JobCard'
 import { FilterBar } from '@/components/FilterBar'
 import { Pagination } from '@/components/Pagination'
@@ -11,7 +11,7 @@ import { JobCardSkeleton } from '@/components/ui/Skeleton'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/components/ui/Toast'
 
-export default function DashboardPage() {
+function DashboardContent() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const toast = useToast()
@@ -59,13 +59,11 @@ export default function DashboardPage() {
 
   async function toggleWatchlist(jobId: number) {
     const inList = watchlistIds.has(jobId)
-
     setWatchlistIds((prev) => {
       const next = new Set(prev)
       inList ? next.delete(jobId) : next.add(jobId)
       return next
     })
-
     try {
       if (inList) {
         await api.delete(`/watchlist/${jobId}`)
@@ -125,5 +123,21 @@ export default function DashboardPage() {
         </div>
       )}
     </main>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="max-w-6xl mx-auto px-4 py-8 space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <JobCardSkeleton key={i} />
+          ))}
+        </main>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   )
 }
