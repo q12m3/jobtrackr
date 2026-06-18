@@ -12,45 +12,31 @@ from app.services.calculation import compute_demand_score
 
 logger = logging.getLogger(__name__)
 
-_REMOTEOK_URL = "https://remoteok.com/remote-dev-jobs"
-_SALARY_RE = re.compile(r"\$?([\d,]+)k?", re.IGNORECASE)
+_REMOTEOK_URL = "https://remoteok.com/api"
 
 
-def _parse_salary_value(raw: str) -> int | None:
-    raw = raw.strip().replace(",", "")
-    match = _SALARY_RE.search(raw)
-    if not match:
-        return None
-    value = int(match.group(1))
-    if "k" in raw.lower() or value < 1000:
-        value *= 1000
-    return value
+def _parse_salary(salary_min: int | None, salary_max: int | None) -> tuple[int | None, int | None]:
+    if salary_min and salary_min > 0:
+        s_min = salary_min
+    else:
+        s_min = None
+    if salary_max and salary_max > 0:
+        s_max = salary_max
+    else:
+        s_max = None
+    return s_min, s_max
 
 
-def _parse_salary(salary_text: str) -> tuple[int | None, int | None]:
-    salary_text = salary_text.strip()
-    if not salary_text or salary_text in ("-", "N/A", ""):
-        return None, None
-
-    parts = re.split(r"[-–—]", salary_text)
-    if len(parts) == 2:
-        return _parse_salary_value(parts[0]), _parse_salary_value(parts[1])
-    if len(parts) == 1:
-        val = _parse_salary_value(parts[0])
-        return val, val
-    return None, None
-
-
-def _parse_posted_at(epoch_str: str | None) -> datetime | None:
-    if not epoch_str:
+def _parse_posted_at(epoch: int | None) -> datetime | None:
+    if not epoch:
         return None
     try:
-        return datetime.fromtimestamp(int(epoch_str), tz=timezone.utc)
+        return datetime.fromtimestamp(epoch, tz=timezone.utc)
     except (ValueError, OSError):
         return None
 
 
-async def _scrape_jobs() -> list[dict]:
+async def _fetch_jobs_via_api() -> list[dict]:
     jobs: list[dict] = []
 
     async with async_playwright() as pw:
@@ -61,69 +47,72 @@ async def _scrape_jobs() -> list[dict]:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            viewport={"width": 1280, "height": 800},
         )
         page = await context.new_page()
 
         try:
             await page.goto(_REMOTEOK_URL, wait_until="domcontentloaded", timeout=60_000)
-            await page.wait_for_selector("tr.job", timeout=30_000)
+            await page.wait_for_timeout(2000)
+            raw_text = await page.evaluate("() => document.body.innerText")
         except PlaywrightTimeout:
-            logger.warning("Timeout waiting for job rows on remoteok.com")
+            logger.warning("Timeout fetching remoteok API")
             await browser.close()
             return jobs
 
-        rows = await page.query_selector_all("tr.job")
-        logger.info("Found %d job rows", len(rows))
-
-        for row in rows:
-            try:
-                job_url_path = await row.get_attribute("data-url")
-                epoch = await row.get_attribute("data-epoch")
-
-                if not job_url_path:
-                    continue
-
-                url = f"https://remoteok.com{job_url_path}"
-
-                title_el = await row.query_selector("h2[itemprop='title']")
-                title = (await title_el.inner_text()).strip() if title_el else None
-                if not title:
-                    continue
-
-                company_el = await row.query_selector("h3[itemprop='name']")
-                company = (await company_el.inner_text()).strip() if company_el else "Unknown"
-
-                tag_els = await row.query_selector_all(".tags .tag")
-                tags: list[str] = []
-                for tag_el in tag_els:
-                    text = (await tag_el.inner_text()).strip()
-                    if text:
-                        tags.append(text)
-
-                salary_el = await row.query_selector(".salary")
-                salary_text = (await salary_el.inner_text()).strip() if salary_el else ""
-                salary_min, salary_max = _parse_salary(salary_text)
-
-                posted_at = _parse_posted_at(epoch)
-
-                jobs.append(
-                    {
-                        "title": title,
-                        "company": company,
-                        "tags": tags,
-                        "salary_min": salary_min,
-                        "salary_max": salary_max,
-                        "url": url,
-                        "posted_at": posted_at,
-                    }
-                )
-            except Exception as exc:
-                logger.warning("Failed to parse row: %s", exc)
-                continue
-
         await browser.close()
 
+    import json
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        logger.error("Failed to parse remoteok JSON response")
+        return jobs
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        if item.get("legal"):
+            continue
+
+        url = item.get("url") or item.get("apply_url", "")
+        if not url:
+            slug = item.get("slug", "")
+            if slug:
+                url = f"https://remoteok.com/remote-jobs/{slug}"
+            else:
+                continue
+
+        if not url.startswith("http"):
+            url = f"https://remoteok.com{url}"
+
+        title = item.get("position") or item.get("title", "")
+        if not title:
+            continue
+
+        company = item.get("company", "Unknown")
+
+        tags: list[str] = item.get("tags", []) or []
+        tags = [t for t in tags if isinstance(t, str)]
+
+        salary_min, salary_max = _parse_salary(
+            item.get("salary_min"),
+            item.get("salary_max"),
+        )
+
+        epoch = item.get("epoch") or item.get("date")
+        posted_at = _parse_posted_at(epoch)
+
+        jobs.append({
+            "title": title,
+            "company": company,
+            "tags": tags,
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "url": url,
+            "posted_at": posted_at,
+        })
+
+    logger.info("Parsed %d jobs from remoteok API", len(jobs))
     return jobs
 
 
@@ -165,8 +154,8 @@ async def _upsert_jobs(raw_jobs: list[dict], db: AsyncSession) -> int:
 async def run_scraper() -> None:
     logger.info("Scraper job started")
     try:
-        raw_jobs = await _scrape_jobs()
-        logger.info("Scraped %d jobs from remoteok.com", len(raw_jobs))
+        raw_jobs = await _fetch_jobs_via_api()
+        logger.info("Fetched %d jobs from remoteok.com", len(raw_jobs))
 
         async with AsyncSessionLocal() as db:
             inserted = await _upsert_jobs(raw_jobs, db)
