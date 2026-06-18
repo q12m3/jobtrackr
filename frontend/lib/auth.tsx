@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, setAuthToken } from '@/lib/api'
 
 export type User = {
   id: number
@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await api.post('/auth/logout')
+    setAuthToken(null)
     setUser(null)
   }, [])
 

@@ -3,7 +3,7 @@
 import { FormEvent, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, setAuthToken } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
@@ -25,7 +25,8 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      await api.post('/auth/login', { email, password })
+      const data = await api.post<{ access_token: string }>('/auth/login', { email, password })
+      setAuthToken(data.access_token)
       await refresh()
       toast('Welcome back!', 'success')
       window.location.href = '/'

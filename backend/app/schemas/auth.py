@@ -31,3 +31,7 @@ class UserOut(BaseModel):
     trial_ends_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class LoginOut(UserOut):
+    access_token: str

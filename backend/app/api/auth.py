@@ -8,7 +8,7 @@ from app.core.dependencies import get_current_user
 from app.core.security import create_access_token, create_refresh_token
 from app.db.models import User
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
+from app.schemas.auth import LoginOut, LoginRequest, RegisterRequest, TokenResponse, UserOut
 from app.services.auth import authenticate_user, refresh_tokens, register_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -27,12 +27,12 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
     response.set_cookie("refresh_token", refresh_token, max_age=_REFRESH_COOKIE_MAX_AGE, **_COOKIE_KWARGS)
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=LoginOut, status_code=status.HTTP_201_CREATED)
 async def register(
     body: RegisterRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
-) -> User:
+) -> dict:
     try:
         user = await register_user(body.email, body.password, db)
     except ValueError as exc:
@@ -41,15 +41,15 @@ async def register(
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
     _set_auth_cookies(response, access_token, refresh_token)
-    return user
+    return {**user.__dict__, "access_token": access_token}
 
 
-@router.post("/login", response_model=UserOut)
+@router.post("/login", response_model=LoginOut)
 async def login(
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
-) -> User:
+) -> dict:
     try:
         user = await authenticate_user(body.email, body.password, db)
     except ValueError as exc:
@@ -58,7 +58,7 @@ async def login(
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
     _set_auth_cookies(response, access_token, refresh_token)
-    return user
+    return {**user.__dict__, "access_token": access_token}
 
 
 @router.post("/refresh", response_model=TokenResponse)

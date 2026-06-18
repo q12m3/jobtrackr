@@ -3,7 +3,7 @@
 import { FormEvent, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, setAuthToken } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/components/ui/Toast'
 import { Button } from '@/components/ui/Button'
@@ -34,7 +34,8 @@ export default function RegisterPage() {
     setLoading(true)
 
     try {
-      await api.post('/auth/register', { email, password })
+      const data = await api.post<{ access_token: string }>('/auth/register', { email, password })
+      setAuthToken(data.access_token)
       await refresh()
       toast('Account created — 7-day Pro trial started!', 'success')
       window.location.href = '/'
