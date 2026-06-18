@@ -17,8 +17,8 @@ _ACCESS_COOKIE_MAX_AGE = settings.access_token_expire_minutes * 60
 _REFRESH_COOKIE_MAX_AGE = settings.refresh_token_expire_days * 24 * 60 * 60
 _COOKIE_KWARGS = {
     "httponly": True,
-    "samesite": "lax",
-    "secure": settings.environment == "production",
+    "samesite": "none",
+    "secure": True,
 }
 
 
